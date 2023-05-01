@@ -1,0 +1,19 @@
+[profile.default]
+optimizer_runs = 200
+verbosity = 1
+
+# Extreme Fuzzing CI Profile :P
+[profile.ci]
+fuzz_runs = 100_000
+verbosity = 4
+
+[rpc_endpoints]
+goerli = "${RPC_URL_GOERLI}"
+mainnet = "${RPC_URL_MAINNET}"
+mumbai = "https://rpc.ankr.com/polygon_mumbai"
+
+[etherscan]
+goerli = {key = "${ETHERSCAN_KEY}", url = "https://api-goerli.etherscan.io/api"}
+mainnet = {key = "${ETHERSCAN_KEY}"}
+mumbai = {key = "${POLYSCAN_KEY}", url = "https://api-testnet.polygonscan.com"}
+

@@ -1,0 +1,17 @@
+
+
+
+forge create \
+	--rpc-url "https://rpc.ankr.com/polygon_mumbai"  \
+	--constructor-args "0x87e40BCd15c66e01fc08e36b7933bD021909eF99" "0xcA1616C955dfad8957cCDCf499Ce2853F6F87a58" \
+	--chain "mumbai"  \
+	--private-key <PRIVATE_KEY> \
+	src/BofRouterFactory.sol:BofRouterFactory
+
+forge verify-contract \
+	--watch \
+	--constructor-args $(cast abi-encode "constructor(address,address)" 0x87e40BCd15c66e01fc08e36b7933bD021909eF99 0xcA1616C955dfad8957cCDCf499Ce2853F6F87a58) \
+	--num-of-optimizations 1000000 \
+	--chain "mumbai" \
+	0x901c2810d1929B027A2F0a777b97E4630f6c9746 \
+	src/BofRouterFactory.sol:BofRouterFactory
