@@ -11,9 +11,11 @@ verbosity = 4
 goerli = "${RPC_URL_GOERLI}"
 mainnet = "${RPC_URL_MAINNET}"
 mumbai = "https://rpc.ankr.com/polygon_mumbai"
+sepolia = "${RPC_URL_SEPOLIA}"
 
 [etherscan]
 goerli = {key = "${ETHERSCAN_KEY}", url = "https://api-goerli.etherscan.io/api"}
 mainnet = {key = "${ETHERSCAN_KEY}"}
 mumbai = {key = "${POLYSCAN_KEY}", url = "https://api-testnet.polygonscan.com"}
+sepolia = {key = "${ETHERSCAN_KEY}", url = "https://api-sepolia.etherscan.io/api"}
 

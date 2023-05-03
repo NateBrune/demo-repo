@@ -20,7 +20,7 @@ import "./interfaces/IBofRouter.sol";
 // and tokens are sent to it, ccipReceive will not be called but tokens will be transferred.
 // @dev If the client is upgradeable you have significantly more flexibility and
 // can avoid storage based options.
-contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
+contract ChainZapTUP is Initializable, OwnableUpgradeable, IAny2EVMMessageReceiver, IERC165 {
   error InvalidConfig();
   error InvalidChain(uint64 chainId);
   error OnlyRouter();
@@ -28,13 +28,14 @@ contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
 
   event MessageSent(bytes32 messageId);
   event MessageReceived(bytes32 messageId);
-
+  event GovernanceUpdated(address pendingGov, address gov);
   // Can consider making mutable up until mainnet.
-  IRouterClient public immutable i_router;
+  IRouterClient public i_router;
   // Current feeToken
   IERC20 public s_feeToken;
   address public gov;
   IBofRouter public bofRouter;
+  address public pendingGov;
   uint64 homeChainId;
   // Below is a simplistic example (same params for all messages) of using storage to allow for new options without
   // upgrading the dapp. Note that extra args are chain family specific (e.g. gasLimit is EVM specific etc.).
@@ -48,18 +49,56 @@ contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
   // and update storage with the new args.
   mapping(uint64 => bytes) public s_chains;
 
-  constructor(IRouterClient router, IERC20 feeToken, address _gov, address _bofRouter, uint64 _homeChainId ) {
+  // constructor(IRouterClient router, IERC20 feeToken, address _gov, address _bofRouter, uint64 _homeChainId ) {
+  //   i_router = router;
+  //   s_feeToken = feeToken;
+  //   s_feeToken.approve(address(i_router), 2 ** 256 - 1);
+  //   gov = _gov;
+  //   bofRouter = IBofRouter(_bofRouter);
+  //   homeChainId = _homeChainId;
+  // }
+  function initialize(
+    address _owner,
+    IRouterClient router, 
+    IERC20 feeToken, 
+    address _gov, 
+    address _bofRouter, 
+    uint64 _homeChainId
+  ) public payable initializer {
+    _transferOwnership(_owner);
+    pendingGov = address(0);
     i_router = router;
     s_feeToken = feeToken;
-    s_feeToken.approve(address(i_router), 2 ** 256 - 1);
+    s_feeToken.approve(address(i_router), type(uint256).max );
     gov = _gov;
     bofRouter = IBofRouter(_bofRouter);
     homeChainId = _homeChainId;
   }
 
-  function setGov(address _gov) external onlyGov {
-    // TODO: Consider making them accept governance to avoid setting gov to something dumb.
-    gov = _gov;
+    //--- setter functions ---//
+    /**
+     * @dev Sets the pending governance to the provided address
+     * @param newGov The address of the new pending governance
+     */
+    function setGovernance(address newGov) external onlyGov {
+        pendingGov = newGov;
+    }
+
+    /**
+     * @dev Accepts the pending governance as the new governance
+     */
+    function acceptGovernance() external onlyPendingGov {
+        emit GovernanceUpdated(pendingGov, gov);
+        gov = pendingGov;
+        pendingGov = address(0);
+    }
+
+  function setCCIPRouter(address _router) external onlyGov {
+    i_router = IRouterClient(_router);
+  }
+
+  function setBofRouter(address _router) external onlyGov {
+    bofRouter = IBofRouter(_router);
   }
 
   // TODO: permissions on enableChain/disableChain
@@ -84,39 +123,13 @@ contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
     // Extremely important to ensure only router calls this.
     // Tokens in message if any will be transferred to this contract
     // TODO: Validate sender/origin chain and process message and/or tokens.
-    if(message.sourceChainId == homeChainId){
-      // Process Withdraw
-      (address receiver, address _vault, address tokenAddress, uint256 amount) = abi.decode(message.data, (address, address, address, uint256));
-      IERC20 token = IERC20(tokenAddress);
-      require(tokenAddress != address(s_feeToken), "!feeToken");
 
-      bofRouter.withdraw(tokenAddress, _vault, amount);
-      address sender = abi.decode(message.sender, (address));
-      bool _withdrawing = true;
-      uint256 newAmount = token.balanceOf(address(this));
-      bytes memory data = abi.encode(_withdrawing, receiver);
-      Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
-      tokenAmounts[0] = Client.EVMTokenAmount({
-        token: tokenAddress,
-        amount: newAmount
-      });
-      sendDataAndTokens(message.sourceChainId, abi.encode(sender), data, tokenAmounts);
-      emit MessageReceived(message.messageId);
-      return;
-    }
-
-    (bool withdrawing, address vault) = abi.decode(message.data, (bool, address));
-    if(withdrawing){
-      Client.EVMTokenAmount memory tokenAmt = message.tokenAmounts[0];
+    (address[] memory vaults) = abi.decode(message.data, (address[]));
+    for(uint256 i = 0; i < message.tokenAmounts.length; i++){
+      Client.EVMTokenAmount calldata tokenAmt = message.tokenAmounts[i];
       IERC20 token = IERC20(tokenAmt.token);
-      token.transfer(vault, tokenAmt.amount);
-    } else {
-      for(uint256 i = 0; i < message.tokenAmounts.length; i++){
-        Client.EVMTokenAmount calldata tokenAmt = message.tokenAmounts[i];
-        IERC20 token = IERC20(tokenAmt.token);
-        token.approve(address(bofRouter), tokenAmt.amount);
-        bofRouter.deposit(tokenAmt.token, vault, tokenAmt.amount);
-      }
+      token.approve(address(bofRouter), tokenAmt.amount);
+      bofRouter.deposit(tokenAmt.token, vaults[i], tokenAmt.amount);
     }
     emit MessageReceived(message.messageId);
   }
@@ -168,36 +181,11 @@ contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
     Client.EVMTokenAmount[] memory tokenAmounts
   ) public validChain(destChainId) {
     for (uint256 i = 0; i < tokenAmounts.length; i++) {
-      if(msg.sender != address(this)){
-        IERC20(tokenAmounts[i].token).transferFrom(msg.sender, address(this), tokenAmounts[i].amount);
-      }
+      IERC20(tokenAmounts[i].token).transferFrom(msg.sender, address(this), tokenAmounts[i].amount);
       IERC20(tokenAmounts[i].token).approve(address(i_router), tokenAmounts[i].amount);
     }
     Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
       receiver: receiver,
-      data: data,
-      tokenAmounts: tokenAmounts,
-      extraArgs: s_chains[destChainId],
-      feeToken: address(s_feeToken)
-    });
-    // Optional uint256 fee = i_router.getFee(destChainId, message);
-    // Can decide if fee is acceptable.
-    // address(this) must have sufficient feeToken or the send will revert.
-    bytes32 messageId = i_router.ccipSend(destChainId, message);
-    emit MessageSent(messageId);
-  }
-
-  function withdrawFromVault(
-    address receiver, //Recipient
-    address vault, // Source of the assets
-    address token, // Vault token we are withdrawing
-    uint256 amount, // Amount of Assets with withdraw
-    uint64 destChainId // Destination Chain
-  ) external validChain(destChainId) {
-    Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](0);
-    bytes memory data = abi.encode(receiver, vault, token, amount);
-    Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
-      receiver: abi.encode(receiver),
       data: data,
       tokenAmounts: tokenAmounts,
       extraArgs: s_chains[destChainId],
@@ -222,5 +210,9 @@ contract ImmutableChainZap is IAny2EVMMessageReceiver, IERC165 {
   modifier onlyGov() {
     if (msg.sender != gov) revert OnlyGov();
     _;
+  }
+  modifier onlyPendingGov() {
+      require(msg.sender == pendingGov, "!PendingGov");
+      _;
   }
 }
