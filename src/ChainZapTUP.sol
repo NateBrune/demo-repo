@@ -36,34 +36,14 @@ contract ChainZapTUP is Initializable, OwnableUpgradeable, IAny2EVMMessageReceiv
   address public gov;
   IBofRouter public bofRouter;
   address public pendingGov;
-  uint64 homeChainId;
-  // Below is a simplistic example (same params for all messages) of using storage to allow for new options without
-  // upgrading the dapp. Note that extra args are chain family specific (e.g. gasLimit is EVM specific etc.).
-  // and will always be backwards compatible i.e. upgrades are opt-in.
-  // Offchain we can compute the V1 extraArgs:
-  //    Client.EVMExtraArgsV1 memory extraArgs = Client.EVMExtraArgsV1({gasLimit: 300_000, strict: false});
-  //    bytes memory encodedV1ExtraArgs = Client._argsToBytes(extraArgs);
-  // Then later compute V2 extraArgs, for example if a refund feature was added:
-  //    Client.EVMExtraArgsV2 memory extraArgs = Client.EVMExtraArgsV2({gasLimit: 300_000, strict: false, destRefundAddress: 0x1234});
-  //    bytes memory encodedV2ExtraArgs = Client._argsToBytes(extraArgs);
-  // and update storage with the new args.
   mapping(uint64 => bytes) public s_chains;
 
-  // constructor(IRouterClient router, IERC20 feeToken, address _gov, address _bofRouter, uint64 _homeChainId ) {
-  //   i_router = router;
-  //   s_feeToken = feeToken;
-  //   s_feeToken.approve(address(i_router), 2 ** 256 - 1);
-  //   gov = _gov;
-  //   bofRouter = IBofRouter(_bofRouter);
-  //   homeChainId = _homeChainId;
-  // }
   function initialize(
     address _owner,
     IRouterClient router, 
     IERC20 feeToken, 
     address _gov, 
-    address _bofRouter, 
-    uint64 _homeChainId
+    address _bofRouter
   ) public payable initializer {
     _transferOwnership(_owner);
     pendingGov = address(0);
@@ -72,48 +52,47 @@ contract ChainZapTUP is Initializable, OwnableUpgradeable, IAny2EVMMessageReceiv
     s_feeToken.approve(address(i_router), type(uint256).max );
     gov = _gov;
     bofRouter = IBofRouter(_bofRouter);
-    homeChainId = _homeChainId;
   }
 
     //--- setter functions ---//
-    /**
-     * @dev Sets the pending governance to the provided address
-     * @param newGov The address of the new pending governance
-     */
+/// @notice Elect new governance to take control of the contract.
     function setGovernance(address newGov) external onlyGov {
         pendingGov = newGov;
     }
 
-    /**
-     * @dev Accepts the pending governance as the new governance
-     */
+    /// @notice Accept the gov role if elected.
     function acceptGovernance() external onlyPendingGov {
         emit GovernanceUpdated(pendingGov, gov);
         gov = pendingGov;
         pendingGov = address(0);
     }
 
+  /// @notice CCIP Router is unlikely to change but we are just being safe.
   function setCCIPRouter(address _router) external onlyGov {
     i_router = IRouterClient(_router);
   }
 
+  /// @notice Bof Router is unlikely to change but we are just being safe.
   function setBofRouter(address _router) external onlyGov {
     bofRouter = IBofRouter(_router);
   }
 
-  // TODO: permissions on enableChain/disableChain
+  /// @notice Add chain to whitelist. Implies that we have a receiver setup on the added chain.  
   function enableChain(uint64 chainId, bytes memory extraArgs) external onlyGov {
     s_chains[chainId] = extraArgs;
   }
 
+  /// @notice Remove chain from whitelist.
   function disableChain(uint64 chainId) external onlyGov {
     delete s_chains[chainId];
   }
 
+  /// @notice Make sure the router knows that we support IERC165.
   function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
     return interfaceId == type(IAny2EVMMessageReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
   }
 
+  /// @notice Required to receive tokens from the bridge. We take the tokens and deposit them in to the BoF wallet specified by the message.
   function ccipReceive(Client.Any2EVMMessage calldata message)
     external
     override
@@ -133,45 +112,6 @@ contract ChainZapTUP is Initializable, OwnableUpgradeable, IAny2EVMMessageReceiv
     }
     emit MessageReceived(message.messageId);
   }
-
-  /// @notice sends data to receiver on dest chain. Assumes address(this) has sufficient native asset.
-	//   function sendDataPayNative(
-  //   uint64 destChainId,
-  //   bytes memory receiver,
-  //   bytes memory data
-  // ) external validChain(destChainId) {
-  //   Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](0);
-  //   Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
-  //     receiver: receiver,
-  //     data: data,
-  //     tokenAmounts: tokenAmounts,
-  //     extraArgs: s_chains[destChainId],
-  //     feeToken: address(0) // We leave the feeToken empty indicating we'll pay raw native.
-  //   });
-  //   bytes32 messageId = i_router.ccipSend{value: i_router.getFee(destChainId, message)}(destChainId, message);
-  //   emit MessageSent(messageId);
-  // }
-
-  /// @notice sends data to receiver on dest chain. Assumes address(this) has sufficient feeToken.
-  // function sendDataPayFeeToken(
-  //   uint64 destChainId,
-  //   bytes memory receiver,
-  //   bytes memory data
-  // ) external validChain(destChainId) {
-  //   Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](0);
-  //   Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
-  //     receiver: receiver,
-  //     data: data,
-  //     tokenAmounts: tokenAmounts,
-  //     extraArgs: s_chains[destChainId],
-  //     feeToken: address(s_feeToken)
-  //   });
-  //   // Optional uint256 fee = i_router.getFee(destChainId, message);
-  //   // Can decide if fee is acceptable.
-  //   // address(this) must have sufficient feeToken or the send will revert.
-  //   bytes32 messageId = i_router.ccipSend(destChainId, message);
-  //   emit MessageSent(messageId);
-  // }
 
   /// @notice sends data to receiver on dest chain. Assumes address(this) has sufficient native token.
   function sendDataAndTokens(
