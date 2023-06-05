@@ -7,30 +7,25 @@ import {BofRouterFactory} from "../src/BofRouterFactory.sol";
 import {BofRouter} from "../src/BofRouter.sol";
 import {ChainZapTUP} from "../src/ChainZapTUP.sol";
 import {FugaziToken} from "../src/Fugazi.sol";
+import {DecoyRouter} from "../src/DecoyRouter.sol";
 
 import {CREATE3} from "../lib/solmate/src/utils/CREATE3.sol";
+import "../src/libraries/Client.sol";
 import "openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 
-contract DeployFugaziScript is CREATE3Script {
-    constructor() CREATE3Script(vm.envString("VERSION")) {}
+contract zapEnableChainScript is CREATE3Script{
+  constructor() CREATE3Script(vm.envString("VERSION")) {}
 
-    function run() external returns (TransparentUpgradeableProxy _fugazi) {
+    function run() external {
       uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
 
-      address proxyAdmin = 0x7c5Dd78e4585d1Ba3CEc8e4acC1037a4854B2aB0;
-      address gov = (0x74DE73F2C586ba6Ed7B154c5460A7Ef42e8194cE);
-
       vm.startBroadcast(deployerPrivateKey);
-      FugaziToken fugazi = new FugaziToken();
-      _fugazi = new TransparentUpgradeableProxy(
-        address(fugazi), 
-        proxyAdmin, 
-        abi.encodeWithSelector(
-          FugaziToken.initialize.selector
-        )
-      );
-	
+      //DecoyRouter _decoy = DecoyRouter(address(0x1fe0d4c77bf322b7726d37b2f84fb51c470f7514));
+      ChainZapTUP zap = ChainZapTUP(address(0x89Eccc61B2d35eACCe08284CF22c2D6487B80A3A));
+
+      Client.EVMExtraArgsV1 memory extraArgs = Client.EVMExtraArgsV1(4000000, false);
+      zap.enableChain(uint64(11155111), Client._argsToBytes(extraArgs));
       vm.stopBroadcast();
     }
 }

@@ -69,7 +69,9 @@ contract ChainZapTUP is Initializable, OwnableUpgradeable, IAny2EVMMessageReceiv
 
   /// @notice CCIP Router is unlikely to change but we are just being safe.
   function setCCIPRouter(address _router) external onlyGov {
+    s_feeToken.approve(address(i_router), 0);
     i_router = IRouterClient(_router);
+    s_feeToken.approve(address(_router), type(uint256).max );
   }
 
   /// @notice Bof Router is unlikely to change but we are just being safe.

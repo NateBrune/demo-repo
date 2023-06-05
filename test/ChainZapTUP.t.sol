@@ -82,6 +82,7 @@ contract ZapTest is BaseSetup {
 
     function testEnableAndDisableChain(uint64 _chainId, Client.EVMExtraArgsV1 memory _extraArgs) public {
         vm.prank(gov);
+        //Client.EVMExtraArgsV1 memory extraArgs = Client.EVMExtraArgsV1(1000000, false);
         zap.enableChain(_chainId, Client._argsToBytes(_extraArgs));
         assertEq(zap.s_chains(_chainId), Client._argsToBytes(_extraArgs));
     }

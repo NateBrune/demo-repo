@@ -17,10 +17,10 @@ contract DeployZapSepoliaScript is CREATE3Script {
     function run() external returns (TransparentUpgradeableProxy _tup) {
       uint256 deployerPrivateKey = uint256(vm.envBytes32("PRIVATE_KEY"));
 
-      address proxyAdmin = 0x150a0ee7393294442EE4d4F5C7d637af01dF93ee;
+      address proxyAdmin = 0x882094c153D83DA48Df9660e7470a478199f1bd5;
       address gov = (0x74DE73F2C586ba6Ed7B154c5460A7Ef42e8194cE);
-      address ccipRouterSepolia = (0x0A36795B3006f50088c11ea45b960A1b0406f03b); //TODO: Update address
-      address chainlinkSepolia = (0x779877A7B0D9E8603169DdbD7836e478b4624789);
+      address ccipRouterFuji = 0xb352E636F4093e4F5A4aC903064881491926aaa9;
+      address chainlinkFuji = 0x0b9d5D9136855f6FEc3c0993feE6E9CE8a297846;
 
       vm.startBroadcast(deployerPrivateKey);
       ChainZapTUP zap = new ChainZapTUP();
@@ -30,8 +30,8 @@ contract DeployZapSepoliaScript is CREATE3Script {
         abi.encodeWithSelector(
           ChainZapTUP.initialize.selector, 
           proxyAdmin,
-          ccipRouterSepolia,
-          chainlinkSepolia,
+          ccipRouterFuji,
+          chainlinkFuji,
           gov,
           address(0)
         )
